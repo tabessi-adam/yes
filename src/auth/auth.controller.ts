@@ -1,10 +1,12 @@
-import { Controller, Post, Body, UseGuards, Get } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Get, UnauthorizedException } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { User, UserRole } from './entities/user.entity';
+import { User } from './entities/user.entity';
 import { GetUser } from './decorators/get-user.decorator';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { UserRole } from '../users/entities/user-role.enum';
+
 
 @Controller('auth')
 export class AuthController {
@@ -34,23 +36,25 @@ export class AuthController {
 
   @Post('register')
   async register(
-    @Body() createUserDto: {
-      email: string;
-      password: string;
+    @Body()
+    userData: {
       firstName: string;
       lastName: string;
-      role?: UserRole;
-      phoneNumber?: string;
+      email: string;
+      password: string;
+      role: UserRole;
     },
   ) {
-    return this.authService.register(createUserDto);
+    return this.authService.register(userData);
   }
 
   @Post('login')
-  async login(
-    @Body() loginDto: { email: string; password: string },
-  ) {
-    return this.authService.login(loginDto.email, loginDto.password);
+  async login(@Body() loginData: { email: string; password: string }) {
+    const user = await this.authService.validateUser(loginData.email, loginData.password);
+    if (!user) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+    return this.authService.login(user);
   }
 
   @UseGuards(JwtAuthGuard)

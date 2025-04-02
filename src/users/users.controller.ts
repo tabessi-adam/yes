@@ -2,32 +2,32 @@ import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Req } fro
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { UserResponseDto } from './dto/user-response.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { UserRole } from './entities/user.entity';
+import { UserRole } from './entities/user-role.enum';
 import { Request } from 'express';
+import { User } from './entities/user.entity';
 
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Post()
-  async create(@Body() createUserDto: CreateUserDto): Promise<{ message: string; user: UserResponseDto }> {
+  create(@Body() createUserDto: CreateUserDto) {
     return this.usersService.create(createUserDto);
   }
 
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
-  findAll(): Promise<UserResponseDto[]> {
+  findAll() {
     return this.usersService.findAll();
   }
 
   @Get(':id')
   @UseGuards(JwtAuthGuard)
-  findOne(@Param('id') id: string): Promise<UserResponseDto> {
+  findOne(@Param('id') id: string) {
     return this.usersService.findOne(+id);
   }
 
@@ -36,21 +36,27 @@ export class UsersController {
   update(
     @Param('id') id: string,
     @Body() updateUserDto: UpdateUserDto,
-    @Req() req: Request,
-  ): Promise<{ message: string; user: UserResponseDto }> {
-    return this.usersService.update(+id, updateUserDto, req.user as any);
+    @Req() req: Request & { user: User }
+  ) {
+    return this.usersService.update(+id, updateUserDto, req.user);
   }
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard)
-  remove(@Param('id') id: string, @Req() req: Request): Promise<{ message: string }> {
-    return this.usersService.delete(+id, req.user as any);
+  remove(
+    @Param('id') id: string,
+    @Req() req: Request & { user: User }
+  ) {
+    return this.usersService.remove(+id, req.user);
   }
 
   @Patch(':id/deactivate')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
-  deactivate(@Param('id') id: string, @Req() req: Request): Promise<{ message: string; user: UserResponseDto }> {
-    return this.usersService.deactivate(+id, req.user as any);
+  deactivate(
+    @Param('id') id: string,
+    @Req() req: Request & { user: User }
+  ) {
+    return this.usersService.deactivate(+id, req.user);
   }
 } 

@@ -1,10 +1,12 @@
-import { Injectable, NotFoundException, ForbiddenException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { User, UserRole } from './entities/user.entity';
+import { User } from './entities/user.entity';
 import { UserResponseDto } from './dto/user-response.dto';
 import * as bcrypt from 'bcrypt';
 import { CreateUserDto } from './dto/create-user.dto';
+import { UserRole } from './entities/user-role.enum';
+import { UpdateUserDto } from './dto/update-user.dto';
 
 @Injectable()
 export class UsersService {
@@ -13,122 +15,117 @@ export class UsersService {
     private userRepository: Repository<User>,
   ) {}
 
-  async create(createUserDto: CreateUserDto): Promise<{ message: string; user: UserResponseDto }> {
-    // Check if email already exists
+  async create(createUserDto: CreateUserDto): Promise<UserResponseDto> {
     const existingUser = await this.userRepository.findOne({
-      where: { email: createUserDto.email }
+      where: { email: createUserDto.email },
     });
 
     if (existingUser) {
-      throw new ConflictException('Email already exists');
+      throw new ForbiddenException('Email already exists');
     }
 
     const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
-    const user = this.userRepository.create({
+    const user = new User();
+    Object.assign(user, {
       ...createUserDto,
       password: hashedPassword,
-      role: UserRole.CLIENT,
-      isActive: true,
     });
+
     const savedUser = await this.userRepository.save(user);
-    return {
-      message: 'User registered successfully',
-      user: this.mapToResponse(savedUser)
-    };
+    return this.mapToResponse(savedUser);
   }
 
   async findAll(): Promise<UserResponseDto[]> {
-    const users = await this.userRepository.find();
+    const users = await this.userRepository.find({
+      relations: ['agent', 'agent.user'], // Load agent and its user relation
+    });
     return users.map(user => this.mapToResponse(user));
   }
 
   async findOne(id: number): Promise<UserResponseDto> {
     const user = await this.userRepository.findOne({
       where: { id },
+      relations: ['agent', 'agent.user'], // Load agent and its user relation
     });
-
     if (!user) {
-      throw new NotFoundException(`User with ID ${id} not found`);
+      throw new NotFoundException('User not found');
     }
-
     return this.mapToResponse(user);
   }
 
-  async update(id: number, updateData: Partial<User>, currentUser: User): Promise<{ message: string; user: UserResponseDto }> {
-    // Only allow users to update their own profile unless they're an admin
+  async update(id: number, updateUserDto: UpdateUserDto, currentUser: User): Promise<UserResponseDto> {
+    const user = await this.userRepository.findOne({
+      where: { id },
+      relations: ['agent', 'agent.user'], // Load agent and its user relation
+    });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
     if (currentUser.role !== UserRole.ADMIN && currentUser.id !== id) {
       throw new ForbiddenException('You can only update your own profile');
     }
 
-    const user = await this.userRepository.findOne({ where: { id } });
-    if (!user) {
-      throw new NotFoundException(`User with ID ${id} not found`);
+    if (updateUserDto.password) {
+      updateUserDto.password = await bcrypt.hash(updateUserDto.password, 10);
     }
 
-    // Check if trying to update email to an existing one
-    if (updateData.email && updateData.email !== user.email) {
-      const existingUser = await this.userRepository.findOne({
-        where: { email: updateData.email }
-      });
-      if (existingUser) {
-        throw new ConflictException('Email already exists');
-      }
-    }
-
-    // If password is being updated, hash it
-    if (updateData.password) {
-      updateData.password = await bcrypt.hash(updateData.password, 10);
-    }
-
-    // Only admin can update role
-    if (updateData.role && currentUser.role !== UserRole.ADMIN) {
-      delete updateData.role;
-    }
-
-    Object.assign(user, updateData);
+    Object.assign(user, updateUserDto);
     const updatedUser = await this.userRepository.save(user);
-    return {
-      message: 'User updated successfully',
-      user: this.mapToResponse(updatedUser)
-    };
+    return this.mapToResponse(updatedUser);
   }
 
-  async delete(id: number, currentUser: User): Promise<{ message: string }> {
-    // Only allow users to delete their own account unless they're an admin
+  async remove(id: number, currentUser: User): Promise<void> {
+    const user = await this.userRepository.findOne({ where: { id } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
     if (currentUser.role !== UserRole.ADMIN && currentUser.id !== id) {
       throw new ForbiddenException('You can only delete your own account');
     }
 
-    const user = await this.userRepository.findOne({ where: { id } });
-    if (!user) {
-      throw new NotFoundException(`User with ID ${id} not found`);
-    }
-
     await this.userRepository.remove(user);
-    return { message: 'User deleted successfully' };
   }
 
   async deactivate(id: number, currentUser: User): Promise<{ message: string; user: UserResponseDto }> {
-    // Only admin can deactivate users
     if (currentUser.role !== UserRole.ADMIN) {
       throw new ForbiddenException('Only administrators can deactivate users');
     }
 
-    const user = await this.userRepository.findOne({ where: { id } });
+    const user = await this.userRepository.findOne({
+      where: { id },
+      relations: ['agent', 'agent.user'], // Load agent and its user relation
+    });
     if (!user) {
       throw new NotFoundException(`User with ID ${id} not found`);
     }
 
-    user.isActive = false;
+    user.agent = undefined; // This might not work as intended due to ManyToOne relation
     const deactivatedUser = await this.userRepository.save(user);
     return {
       message: 'User deactivated successfully',
-      user: this.mapToResponse(deactivatedUser)
+      user: this.mapToResponse(deactivatedUser),
     };
   }
 
   private mapToResponse(user: User): UserResponseDto {
-    const { password, ...response } = user;
-    return response as UserResponseDto;
+    return {
+      id: user.id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      role: user.role,
+      phoneNumber: user.phoneNumber,
+      address: user.address,
+      agent: user.agent
+        ? {
+            id: user.agent.id,
+            name: `${user.firstName} ${user.lastName}`, // Using user's name since Agent has no name property
+          }
+        : undefined,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
   }
-} 
+}

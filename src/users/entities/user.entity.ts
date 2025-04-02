@@ -1,10 +1,7 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
-
-export enum UserRole {
-  ADMIN = 'admin',
-  AGENCY = 'agency',
-  CLIENT = 'client',
-}
+import { Entity, PrimaryGeneratedColumn, Column, OneToOne, JoinColumn, CreateDateColumn, UpdateDateColumn, ManyToOne } from 'typeorm';
+import { UserRole } from './user-role.enum';
+import { Agent } from '../../agents/entities/agent.entity';
+import { Office } from '../../offices/entities/office.entity';
 
 @Entity('users')
 export class User {
@@ -23,6 +20,12 @@ export class User {
   @Column()
   password: string;
 
+  @Column({ nullable: true })
+  phoneNumber?: string;
+
+  @Column({ nullable: true })
+  address?: string;
+
   @Column({
     type: 'enum',
     enum: UserRole,
@@ -30,8 +33,12 @@ export class User {
   })
   role: UserRole;
 
-  @Column({ default: true })
-  isActive: boolean;
+  @OneToOne(() => Agent, agent => agent.user)
+  @JoinColumn()
+  agent?: Agent;
+
+  @ManyToOne(() => Office, office => office.agents)
+  office?: Office;
 
   @CreateDateColumn()
   createdAt: Date;

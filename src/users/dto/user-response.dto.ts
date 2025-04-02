@@ -1,4 +1,4 @@
-import { UserRole } from '../entities/user.entity';
+import { UserRole } from '../entities/user-role.enum';
 
 export class UserResponseDto {
   id: number;
@@ -6,7 +6,12 @@ export class UserResponseDto {
   lastName: string;
   email: string;
   role: UserRole;
-  isActive: boolean;
+  phoneNumber?: string;
+  address?: string;
+  agent?: {
+    id: number;
+    name: string;
+  };
   createdAt: Date;
   updatedAt: Date;
 } 
